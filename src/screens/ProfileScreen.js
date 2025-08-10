@@ -1,24 +1,68 @@
-﻿import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+﻿import React, { useEffect, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const K_NAME = "demo.profile.name";
+const K_CURR = "demo.profile.currency";
+const K_BUDG = "demo.profile.monthlyBudget";
 
 export default function ProfileScreen() {
-  // Local demo state (we'll wire to Firebase next sprint)
   const [name, setName] = useState("");
-  const [email] = useState("user@example.com"); // read-only placeholder
+  const [email] = useState("demo@user.app"); // read-only demo value
   const [currency, setCurrency] = useState("USD");
   const [monthlyBudget, setMonthlyBudget] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const [n, c, b] = await Promise.all([
+          AsyncStorage.getItem(K_NAME),
+          AsyncStorage.getItem(K_CURR),
+          AsyncStorage.getItem(K_BUDG),
+        ]);
+        if (!live) return;
+        if (n) setName(n);
+        if (c) setCurrency(c);
+        if (b) setMonthlyBudget(b);
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const save = async () => {
     if (!name.trim()) return Alert.alert("Required", "Please enter your name.");
     const n = Number(monthlyBudget);
-    if (Number.isNaN(n) || n < 0) return Alert.alert("Invalid budget", "Enter a valid number (0 or more).");
-    Alert.alert("Saved", "Changes saved locally. We'll connect Firebase next.");
+    if (Number.isNaN(n) || n < 0) return Alert.alert("Invalid budget", "Enter a number ≥ 0.");
+    try {
+      setSaving(true);
+      await Promise.all([
+        AsyncStorage.setItem(K_NAME, name.trim()),
+        AsyncStorage.setItem(K_CURR, currency.trim().toUpperCase()),
+        AsyncStorage.setItem(K_BUDG, String(n)),
+      ]);
+      Alert.alert("Saved", "Profile saved locally (Demo Mode).");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const logout = () => {
-    Alert.alert("Logout", "This will log out once Firebase Auth is connected.");
+    Alert.alert("Demo Mode", "Authentication is disabled right now, so Logout does nothing. We’ll enable it later.");
   };
+
+  if (loading) {
+    return (
+      <LinearGradient colors={["#7097D1", "#BFD0EA"]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" />
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient colors={["#7097D1", "#BFD0EA"]} style={{ flex: 1 }}>
@@ -45,11 +89,7 @@ export default function ProfileScreen() {
             />
 
             <Text style={label}>Email (read-only)</Text>
-            <TextInput
-              style={[input, { opacity: 0.7 }]}
-              value={email}
-              editable={false}
-            />
+            <TextInput style={[input, { opacity: 0.7 }]} value={email} editable={false} />
 
             <Text style={label}>Currency</Text>
             <TextInput
@@ -71,8 +111,8 @@ export default function ProfileScreen() {
               placeholderTextColor="#9aa6b2"
             />
 
-            <TouchableOpacity onPress={save} style={primaryBtn} activeOpacity={0.8}>
-              <Text style={primaryText}>Save Changes</Text>
+            <TouchableOpacity onPress={save} style={primaryBtn} activeOpacity={0.8} disabled={saving}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={primaryText}>Save Changes</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={logout} style={secondaryBtn} activeOpacity={0.8}>
@@ -85,59 +125,11 @@ export default function ProfileScreen() {
   );
 }
 
-// --- micro styles (simple & readable) ---
-const card = {
-  backgroundColor: "rgba(255,255,255,0.95)",
-  borderRadius: 16,
-  padding: 16,
-  shadowColor: "#000",
-  shadowOpacity: 0.15,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 4,
-};
-
-const avatar = {
-  width: 96,
-  height: 96,
-  borderRadius: 48,
-  backgroundColor: "#fff",
-  alignItems: "center",
-  justifyContent: "center",
-  borderWidth: 1,
-  borderColor: "#e5e7eb",
-};
-
+const card = { backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 16, padding: 16, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 };
+const avatar = { width: 96, height: 96, borderRadius: 48, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#e5e7eb" };
 const label = { marginTop: 6, marginBottom: 6, fontWeight: "600", color: "#111827" };
-
-const input = {
-  backgroundColor: "rgba(17,37,93,0.08)",
-  borderWidth: 1,
-  borderColor: "#cfd8e3",
-  borderRadius: 12,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  color: "#111827",
-};
-
-const primaryBtn = {
-  marginTop: 12,
-  backgroundColor: "#111827",
-  borderRadius: 14,
-  paddingVertical: 12,
-  alignItems: "center",
-};
-
+const input = { backgroundColor: "rgba(17,37,93,0.08)", borderWidth: 1, borderColor: "#cfd8e3", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: "#111827" };
+const primaryBtn = { marginTop: 12, backgroundColor: "#111827", borderRadius: 14, paddingVertical: 12, alignItems: "center" };
 const primaryText = { color: "#fff", fontWeight: "700" };
-
-const secondaryBtn = {
-  marginTop: 10,
-  backgroundColor: "#fff",
-  borderWidth: 1,
-  borderColor: "#d1d5db",
-  borderRadius: 14,
-  paddingVertical: 12,
-  alignItems: "center",
-};
-
+const secondaryBtn = { marginTop: 10, backgroundColor: "#fff", borderWidth: 1, borderColor: "#d1d5db", borderRadius: 14, paddingVertical: 12, alignItems: "center" };
 const secondaryText = { color: "#111827", fontWeight: "700" };
