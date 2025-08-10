@@ -1,7 +1,9 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { Card, Title, ScreenPad, Input, Button, Chip, Row, IconBubble } from "../ui";
+import { theme, textStyles, space } from "../ui/theme";
 import { getBudget, setBudget, getCurrency, addTransaction, getTransactions, formatMoney } from "../utils/storage";
 
 export default function BudgetScreen() {
@@ -9,7 +11,7 @@ export default function BudgetScreen() {
   const [budget, setBud] = useState("");
   const [saving, setSaving] = useState(false);
   const [txns, setTxns] = useState([]);
-  const [quickType, setQuickType] = useState("expense"); // "income" | "expense"
+  const [quickType, setQuickType] = useState("expense");
   const [quickLabel, setQuickLabel] = useState("");
   const [quickAmount, setQuickAmount] = useState("");
   const [quickCategory, setQuickCategory] = useState("");
@@ -26,7 +28,7 @@ export default function BudgetScreen() {
     return () => { live = false; };
   }, []);
 
-  const saveBudget = async () => {
+  const saveBudgetNow = async () => {
     const n = Number(budget);
     if (Number.isNaN(n) || n < 0) return Alert.alert("Invalid", "Enter a valid monthly budget (0 or more).");
     setSaving(true);
@@ -47,9 +49,7 @@ export default function BudgetScreen() {
       dateISO: new Date().toISOString(),
     });
     setTxns(next);
-    setQuickAmount("");
-    setQuickLabel("");
-    setQuickCategory("");
+    setQuickAmount(""); setQuickLabel(""); setQuickCategory("");
     Alert.alert("Added", "Transaction saved.");
   };
 
@@ -63,71 +63,53 @@ export default function BudgetScreen() {
   }, [txns]);
 
   return (
-    <LinearGradient colors={["#7097D1", "#BFD0EA"]} style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        {/* Budget setter */}
-        <View style={card}>
-          <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8 }}>Monthly Budget</Text>
-          <TextInput
-            style={input}
-            value={budget}
-            onChangeText={setBud}
-            keyboardType="numeric"
-            placeholder="e.g., 2000"
-            placeholderTextColor="#9aa6b2"
-          />
-          <TouchableOpacity onPress={saveBudget} style={primaryBtn} disabled={saving}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={primaryText}>Save Budget</Text>}
-          </TouchableOpacity>
-          <Text style={{ marginTop: 8, opacity: 0.7 }}>Current: <Text style={{ fontWeight:"800" }}>{formatMoney(Number(budget)||0, currency)}</Text></Text>
-        </View>
+    <LinearGradient colors={theme.gradient} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
+        <ScreenPad>
+          {/* Budget setter */}
+          <Card>
+            <Title>Monthly Budget</Title>
+            <Input
+              value={budget}
+              onChangeText={setBud}
+              keyboardType="numeric"
+              placeholder="e.g., 2000"
+              style={{ marginTop: space.sm }}
+            />
+            <Button onPress={saveBudgetNow} variant="accent">
+              {saving ? "Saving..." : "Save Budget"}
+            </Button>
+            <Text style={{ marginTop: 8, opacity: 0.7 }}>
+              Current: <Text style={{ fontWeight:"800" }}>{formatMoney(Number(budget)||0, currency)}</Text>
+            </Text>
+          </Card>
 
-        {/* Quick Add */}
-        <View style={[card, { marginTop: 12 }]}>
-          <Text style={{ fontSize: 16, fontWeight:"800", marginBottom: 10 }}>Quick Add</Text>
+          {/* Quick Add */}
+          <Card style={{ marginTop: space.md }}>
+            <Title size="h3">Quick Add</Title>
+            <View style={{ flexDirection:"row", gap:8, marginTop: 10, marginBottom: 10 }}>
+              <Chip text="Expense" active={quickType==="expense"} onPress={()=>setQuickType("expense")} />
+              <Chip text="Income"  active={quickType==="income"}  onPress={()=>setQuickType("income")} />
+            </View>
+            <Input value={quickLabel} onChangeText={setQuickLabel} placeholder="Label (e.g., Coffee)" />
+            <Input value={quickAmount} onChangeText={setQuickAmount} placeholder="Amount" keyboardType="numeric" style={{ marginTop: space.sm }} />
+            <Input value={quickCategory} onChangeText={setQuickCategory} placeholder="Category (e.g., Food)" style={{ marginTop: space.sm }} />
+            <Button onPress={addQuick}>Add {quickType==="income" ? "Income" : "Expense"}</Button>
+          </Card>
 
-          <View style={{ flexDirection:"row", gap:8, marginBottom:8 }}>
-            <TouchableOpacity onPress={()=>setQuickType("expense")} style={[chip, quickType==="expense" && chipActive]}>
-              <Ionicons name="remove-circle-outline" size={16} />
-              <Text style={chipText}>Expense</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={()=>setQuickType("income")} style={[chip, quickType==="income" && chipActive]}>
-              <Ionicons name="add-circle-outline" size={16} />
-              <Text style={chipText}>Income</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TextInput style={input} value={quickLabel} onChangeText={setQuickLabel} placeholder="Label (e.g., Coffee)" placeholderTextColor="#9aa6b2" />
-          <TextInput style={input} value={quickAmount} onChangeText={setQuickAmount} placeholder="Amount" placeholderTextColor="#9aa6b2" keyboardType="numeric" />
-          <TextInput style={input} value={quickCategory} onChangeText={setQuickCategory} placeholder="Category (e.g., Food)" placeholderTextColor="#9aa6b2" />
-
-          <TouchableOpacity onPress={addQuick} style={primaryBtn}>
-            <Text style={primaryText}>Add {quickType==="income" ? "Income" : "Expense"}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Category spend */}
-        <Text style={{ marginTop: 18, marginBottom: 8, fontWeight: "800", fontSize: 16 }}>This Month by Category</Text>
-        {byCategory.length === 0 ? (
-          <Text style={{ opacity:0.7 }}>No expenses yet.</Text>
-        ) : byCategory.map(([cat,total]) => (
-          <View key={cat} style={row}>
-            <View style={iconCircle}><Ionicons name="pricetag-outline" size={18} /></View>
-            <Text style={{ flex:1, fontWeight:"700" }}>{cat}</Text>
-            <Text style={{ fontWeight:"800" }}>{formatMoney(total, currency)}</Text>
-          </View>
-        ))}
+          {/* Category spend */}
+          <Text style={[textStyles.h3, { marginTop: space.xl, marginBottom: space.sm }]}>This Month by Category</Text>
+          {byCategory.length === 0 ? (
+            <Text style={textStyles.sub}>No expenses yet.</Text>
+          ) : byCategory.map(([cat,total]) => (
+            <Row key={cat} style={{ marginBottom: 8 }}>
+              <IconBubble size={32}><Ionicons name="pricetag-outline" size={18} /></IconBubble>
+              <Text style={{ flex:1, fontWeight:"700", color: theme.text }}>{cat}</Text>
+              <Text style={{ fontWeight:"800" }}>{formatMoney(total, currency)}</Text>
+            </Row>
+          ))}
+        </ScreenPad>
       </ScrollView>
     </LinearGradient>
   );
 }
-
-const card = { backgroundColor:"#fff", borderRadius:16, padding:16, shadowColor:"#000", shadowOpacity:0.15, shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:4 };
-const input = { backgroundColor:"rgba(17,37,93,0.08)", borderWidth:1, borderColor:"#cfd8e3", borderRadius:12, paddingHorizontal:12, paddingVertical:10, color:"#111827", marginTop:8 };
-const primaryBtn = { marginTop: 12, backgroundColor: "#111827", borderRadius: 14, paddingVertical: 12, alignItems: "center" };
-const primaryText = { color: "#fff", fontWeight: "700" };
-const chip = { flexDirection:"row", alignItems:"center", gap:6, backgroundColor:"#f3f4f6", borderWidth:1, borderColor:"#e5e7eb", paddingHorizontal:10, paddingVertical:8, borderRadius:999 };
-const chipActive = { backgroundColor:"#111827", borderColor:"#111827" };
-const chipText = { color:"#111827", fontWeight:"700" };
-const row = { backgroundColor:"#fff", borderRadius:12, padding:12, flexDirection:"row", alignItems:"center", gap:12, marginBottom:8, shadowColor:"#000", shadowOpacity:0.04, shadowRadius:4, shadowOffset:{width:0,height:1}, elevation:1 };
-const iconCircle = { width:32, height:32, borderRadius:16, backgroundColor:"#e5e7eb", alignItems:"center", justifyContent:"center" };
