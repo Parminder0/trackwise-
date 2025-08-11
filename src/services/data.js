@@ -1,0 +1,10 @@
+﻿import { DEMO_MODE } from "../config";
+import * as local from "./local";
+import * as firestore from "./firestore";
+const impl = DEMO_MODE ? local : firestore;
+export const ensureUserDoc     = (...a) => impl.ensureUserDoc(...a);
+export const subUserDoc        = (...a) => impl.subUserDoc(...a);
+export const subTransactions   = (...a) => impl.subTransactions(...a);
+export const addTransaction    = (...a) => impl.addTransaction(...a);
+export const deleteTransaction = (...a) => impl.deleteTransaction(...a);
+export const saveProfile       = (...a) => impl.saveProfile(...a);

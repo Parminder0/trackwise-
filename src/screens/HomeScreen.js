@@ -2,102 +2,114 @@
 import { View, Text, ScrollView } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, Title, ScreenPad, Row, IconBubble, ProgressBar, Divider } from "../ui";
-import { theme, textStyles, space } from "../ui/theme";
-import { getName, getCurrency, getBudget, seedIfEmpty, getTransactions, isInCurrentMonth, formatMoney } from "../utils/storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
+import { subUserDoc, subTransactions } from "../services/data";
+import { theme } from "../ui/theme";
+
+function formatMoney(n, currency) {
+  try { return new Intl.NumberFormat("en-US",{ style:"currency", currency }).format(n); }
+  catch { return `${currency} ${Number(n||0).toFixed(2)}`; }
+}
+const isInCurrentMonth = (iso) => {
+  const d = new Date(iso); const now = new Date();
+  return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+};
 
 export default function HomeScreen() {
-  const [name, setName] = useState("");
-  const [currency, setCurrency] = useState("USD");
-  const [budget, setBudget] = useState(0);
+  const { user } = useAuth();
+  const [profile, setProfile] = useState({ displayName:"", currency:"USD", monthlyBudget:0 });
   const [txns, setTxns] = useState([]);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    let live = true;
-    (async () => {
-      const [nm, cur, bud] = await Promise.all([getName(), getCurrency(), getBudget()]);
-      const seeded = await seedIfEmpty();
-      const all = await getTransactions();
-      if (!live) return;
-      setName(nm || "User");
-      setCurrency(cur);
-      setBudget(bud);
-      setTxns(all.length ? all : seeded);
-    })();
-    return () => { live = false; };
+    const off1 = subUserDoc(user.uid, (d)=> setProfile(d || { currency:"USD", monthlyBudget:0 }));
+    const off2 = subTransactions(user.uid, setTxns);
+    return () => { off1 && off1(); off2 && off2(); };
   }, []);
 
-  const { income, expense, spent, remaining } = useMemo(() => {
+  const { income, expense, spent, remaining, pct } = useMemo(() => {
     const monthTxns = txns.filter(t => isInCurrentMonth(t.dateISO));
     const income = monthTxns.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
     const expense = monthTxns.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
     const spent = expense;
-    const remaining = Math.max(0, budget - spent);
-    return { income, expense, spent, remaining };
-  }, [txns, budget]);
-
-  const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
+    const remaining = Math.max(0, (profile.monthlyBudget||0) - spent);
+    const pct = (profile.monthlyBudget||0) > 0 ? Math.min(100, Math.round((spent/(profile.monthlyBudget||1))*100)) : 0;
+    return { income, expense, spent, remaining, pct };
+  }, [txns, profile]);
 
   return (
     <LinearGradient colors={theme.gradient} style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
-        <ScreenPad>
-          <Text style={[textStyles.h1, { marginBottom: 4 }]}>Welcome back, {name} 👋</Text>
-          <Text style={[textStyles.sub, { marginBottom: space.md }]}>This month overview</Text>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 28 }}>
+        <Text style={{ fontSize:22, fontWeight:"800", marginBottom:4, color:theme.text }}>
+          Welcome back, {profile.displayName || user.email} 👋
+        </Text>
+        <Text style={{ opacity:0.8, marginBottom:12, color:theme.subtext }}>This month overview</Text>
 
-          {/* Budget Summary */}
-          <Card>
-            <Title>Monthly Budget</Title>
-            <View style={{ height: space.md }} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-              <Text style={textStyles.body}>Budget</Text>
-              <Text style={[textStyles.h3]}>{formatMoney(budget, currency)}</Text>
-            </View>
-            <ProgressBar value={pct} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
-              <Text style={textStyles.body}>Spent</Text>
-              <Text style={[textStyles.h3]}>{formatMoney(spent, currency)} ({pct}%)</Text>
-            </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
-              <Text style={textStyles.body}>Remaining</Text>
-              <Text style={[textStyles.h3]}>{formatMoney(remaining, currency)}</Text>
-            </View>
-          </Card>
+        {/* Budget Summary */}
+        <View style={card}>
+          <Text style={title}>Monthly Budget</Text>
+          <RowLine label="Budget" value={formatMoney(profile.monthlyBudget||0, profile.currency||"USD")} />
+          <Bar pct={pct} />
+          <RowLine label="Spent" value={`${formatMoney(spent, profile.currency||"USD")} (${pct}%)`} />
+          <RowLine label="Remaining" value={formatMoney(remaining, profile.currency||"USD")} last />
+        </View>
 
-          {/* Quick stats */}
-          <View style={{ flexDirection: "row", gap: space.md, marginTop: space.md }}>
-            <Card style={{ flex:1 }}>
-              <Text style={[textStyles.sub, { marginBottom: 6 }]}>Income</Text>
-              <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
-                <Text style={[textStyles.h2]}>{formatMoney(income, currency)}</Text>
-                <Ionicons name="trending-up-outline" size={22} />
-              </View>
-            </Card>
-            <Card style={{ flex:1 }}>
-              <Text style={[textStyles.sub, { marginBottom: 6 }]}>Expenses</Text>
-              <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
-                <Text style={[textStyles.h2]}>{formatMoney(expense, currency)}</Text>
-                <Ionicons name="trending-down-outline" size={22} />
-              </View>
-            </Card>
+        {/* Quick stats */}
+        <View style={{ flexDirection:"row", gap:12, marginTop:12 }}>
+          <Mini label="Income"   value={formatMoney(income, profile.currency||"USD")}   icon="trending-up-outline" />
+          <Mini label="Expenses" value={formatMoney(expense, profile.currency||"USD")} icon="trending-down-outline" />
+        </View>
+
+        {/* Recent */}
+        <Text style={{ marginTop:18, marginBottom:8, fontWeight:"800", fontSize:16 }}>Recent</Text>
+        {txns.slice(0,5).map(t => (
+          <View key={t.id} style={row}>
+            <View style={iconBubble}><Ionicons name={t.type==="income" ? "arrow-down-circle-outline" : "arrow-up-circle-outline"} size={20} /></View>
+            <View style={{ flex:1 }}>
+              <Text style={{ fontWeight:"700" }}>{t.label}</Text>
+              <Text style={{ opacity:0.6, fontSize:12 }}>{t.category}</Text>
+            </View>
+            <Text style={{ fontWeight:"800", color: t.type==="income" ? theme.success : theme.danger }}>
+              {t.type==="income" ? "+" : "-"}{formatMoney(t.amount, profile.currency||"USD")}
+            </Text>
           </View>
-
-          {/* Recent */}
-          <Text style={[textStyles.h3, { marginTop: space.xl, marginBottom: space.sm }]}>Recent</Text>
-          {txns.slice(0,5).map(t => (
-            <Row key={t.id} style={{ marginBottom: 8 }}>
-              <IconBubble><Ionicons name={t.type==="income" ? "arrow-down-circle-outline" : "arrow-up-circle-outline"} size={20} /></IconBubble>
-              <View style={{ flex:1 }}>
-                <Text style={{ fontWeight:"700", color: theme.text }}>{t.label}</Text>
-                <Text style={textStyles.sub}>{t.category}</Text>
-              </View>
-              <Text style={{ fontWeight:"800", color: t.type==="income" ? theme.success : theme.danger }}>
-                {t.type==="income" ? "+" : "-"}{formatMoney(t.amount, currency)}
-              </Text>
-            </Row>
-          ))}
-        </ScreenPad>
+        ))}
       </ScrollView>
     </LinearGradient>
   );
 }
+
+/* small components */
+function RowLine({ label, value, last }) {
+  return (
+    <View style={{ flexDirection:"row", justifyContent:"space-between", marginBottom: last?0:8 }}>
+      <Text>{label}</Text><Text style={{ fontWeight:"700" }}>{value}</Text>
+    </View>
+  );
+}
+function Bar({ pct=0 }) {
+  return (
+    <View style={{ height:14, backgroundColor:"#e5e7eb", borderRadius:999, overflow:"hidden", marginBottom:8 }}>
+      <View style={{ width:`${Math.max(0,Math.min(100,pct))}%`, backgroundColor:theme.accent, height:"100%" }} />
+    </View>
+  );
+}
+function Mini({ label, value, icon }) {
+  return (
+    <View style={miniCard}>
+      <Text style={{ opacity:0.6 }}>{label}</Text>
+      <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
+        <Text style={{ fontSize:18, fontWeight:"800" }}>{value}</Text>
+        <Ionicons name={icon} size={22} />
+      </View>
+    </View>
+  );
+}
+
+/* styles */
+const title = { fontSize:18, fontWeight:"800", marginBottom:12 };
+const card = { backgroundColor:"#fff", borderRadius:18, padding:16, shadowColor:"#000", shadowOpacity:0.12, shadowRadius:10, shadowOffset:{width:0,height:4}, elevation:4 };
+const miniCard = { backgroundColor:"#fff", borderRadius:18, padding:12, flex:1, shadowColor:"#000", shadowOpacity:0.08, shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:2 };
+const row = { backgroundColor:"#fff", borderRadius:14, padding:12, flexDirection:"row", alignItems:"center", gap:12, marginBottom:8, shadowColor:"#000", shadowOpacity:0.04, shadowRadius:6, shadowOffset:{width:0,height:2}, elevation:1 };
+const iconBubble = { width:36, height:36, borderRadius:18, backgroundColor:"#e5e7eb", alignItems:"center", justifyContent:"center" };
